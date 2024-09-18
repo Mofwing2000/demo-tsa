@@ -15,9 +15,10 @@ const SET_SIZE = 10;
 enum UPLOAD_STATE {
   IDLE = "IDLE",
   PENDING = "PENDING",
+  RETRYING = "RETRYING",
   SUCCEED = "SUCCEED",
   FAILED = "FAILED",
-  UPLOADED = "UPLOADED",
+  PROCESSING = "PROCESSING",
 }
 
 const baseStyle = {
@@ -40,8 +41,10 @@ const activeStyle = {
 
 interface UploadCertStepProps {
   currentBatchId: string;
-  setStep: React.Dispatch<React.SetStateAction<number>>;
-  setCurrentBatchId: React.Dispatch<React.SetStateAction<string>>;
+  setStep: (step: number) => void; 
+  setCurrentBatchId: (batchId: string) => void;
+  selectedCertList: File[];
+  setSelectedCertList: (files: File[]) => void;
 }
 
 type FileUploadError = {
@@ -53,16 +56,22 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
   setStep,
   currentBatchId,
   setCurrentBatchId,
+  selectedCertList,
+  setSelectedCertList,
 }) => {
-  const [selectedCertList, setSelectedCertList] = useState<File[]>([]);
   const [succeedFiles, setSucceedFiles] = useState<File[]>([]);
   const [failedFiles, setFailedFiles] = useState<File[]>([]);
   const [uploadingState, setUploadingState] = useState<
     keyof typeof UPLOAD_STATE
   >(UPLOAD_STATE.IDLE);
 
+  //timer
+  const [uploadDuration, setUploadDuration] = useState<number | undefined>();
+
   const inputRef = useRef<HTMLInputElement | null>(null);
   const uploadRef = useRef<HTMLDivElement>(null);
+  const batchProgressIntervalRef = useRef<number>();
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   let _eventSource: any = null;
 
@@ -119,22 +128,6 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
     }
   };
 
-//   useEffect(() => {
-//     if (
-//       selectedCertList?.length &&
-//       selectedCertList?.length === failedFiles?.length + succeedFiles?.length
-//     ) {
-//       if (failedFiles?.length) {
-//         setUploadingState(UPLOAD_STATE.FAILED);
-//         notification.error({
-//           message: `Đã có ${failedFiles?.length} chứng nhận đã tải lên thất bại`,
-//         });
-//       } else {
-//         setUploadingState(UPLOAD_STATE.UPLOADED);
-//       }
-//     }
-//   }, [failedFiles, succeedFiles, selectedCertList]);
-
   const sendFiles = async (files: File[], batchId: string): Promise<void> => {
     const formData = new FormData();
     files.forEach((file) => {
@@ -159,75 +152,92 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
     }
   };
 
+  //batch upload
   const handleBatchUpload = async (
     files: File[],
     batchId: string,
     maxRetries = MAX_RETRIES
-) => {
+  ) => {
+    // setUploadDuration(undefined);
+    // const initTime = Date.now();
+    // initEventSource(batchId, initTime);
+    // dispatchEvent(eventBatchProgress);
     const concurrencyLimit = 5; // Limit to 5 concurrent uploads
     let currentIndex = 0; // Index to track which file batch to upload next
     const queue: Promise<void>[] = []; // To keep track of ongoing uploads
 
     // Helper function to upload a batch of files
     const uploadNextBatch = async () => {
-        if (currentIndex >= files.length) return; // All files processed
+      if (currentIndex >= files.length) return; // All files processed
 
-        const fileBatch = files.slice(currentIndex, currentIndex + SET_SIZE);
-        currentIndex += SET_SIZE; // Move to the next batch
+      const fileBatch = files.slice(currentIndex, currentIndex + SET_SIZE);
+      currentIndex += SET_SIZE; // Move to the next batch
 
-        try {
-            await sendFilesWithRetry(fileBatch, batchId, maxRetries);
-        } catch (error) {
-            console.error("Error uploading file batch:", error);
-        }
+      try {
+        await sendFilesWithRetry(fileBatch, batchId, maxRetries);
+      } catch (error) {
+        console.error("Error uploading file batch:", error);
+      }
     };
 
     // Start uploading while maintaining the concurrency limit
     while (currentIndex < files.length || queue.length > 0) {
-        // While we're below the concurrency limit, start new uploads
-        while (queue.length < concurrencyLimit && currentIndex < files.length) {
-            const uploadPromise = uploadNextBatch().then(() => {
-                // Remove the completed promise from the queue
-                queue.splice(queue.indexOf(uploadPromise), 1);
-            });
-            queue.push(uploadPromise); // Add the promise to the queue
-        }
+      // While we're below the concurrency limit, start new uploads
+      while (queue.length < concurrencyLimit && currentIndex < files.length) {
+        const uploadPromise = uploadNextBatch().then(() => {
+          // Remove the completed promise from the queue
+          queue.splice(queue.indexOf(uploadPromise), 1);
+        });
+        queue.push(uploadPromise); // Add the promise to the queue
+      }
 
-        // Wait for one of the ongoing uploads to finish before starting a new one
-        await Promise.race(queue);
+      // Wait for one of the ongoing uploads to finish before starting a new one
+      await Promise.race(queue);
     }
-};
+  };
+
+  // const handleBatchUpload = async (
+  //   files: File[],
+  //   batchId: string,
+  //   maxRetries = MAX_RETRIES
+  // ) => {
+  //   try {
+  //     // dispatchEvent(eventBatchProgress);
+  //     setUploadDuration(undefined);
+  //     const initTime = Date.now();
+  //     // initEventSource(batchId, initTime);
+  //     for (let i = 0; i < files.length; i += SET_SIZE) {
+  //       const fileBatch = files.slice(i, i + SET_SIZE);
+  //       await sendFilesWithRetry(fileBatch, batchId, maxRetries);
+  //     }
+  //     batchProgressIntervalRef.current = setInterval(() => {
+  //       sweepData(batchId, files?.length);
+  //     }, 5000)
+  //   } catch {}
+  // };
 
   const handleRetryAllFail = async () => {
     setFailedFiles([]);
+    setUploadingState(UPLOAD_STATE.RETRYING)
     await handleBatchUpload(failedFiles, currentBatchId, 1);
   };
 
   const handleUploadInit = async () => {
     setUploadingState(UPLOAD_STATE.PENDING);
     try {
-      const result = await axiosInstance.post(
-        "/batches/create",
-        {
-          title: "Title",
-          templateId: "4a5e361f-6f49-4700-8dc4-c5d764382008",
-          institutionName: "HUST",
-          size: selectedCertList?.length,
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
-      const init = Date.now();
-      await handleBatchUpload(selectedCertList, result?.data?.detail);
-      setUploadingState(UPLOAD_STATE.SUCCEED);
-      const end = Date.now();
-      alert((end - init) / 1000);
-      // setTimeout(() => {
-      // }, 3000);
+      const result = await axiosInstance.post("/batches/create", {
+        title: "Title",
+        templateId: "09585e4f-08da-4745-aa59-1e1baf8a270f",
+        institutionName: "HUST",
+        size: selectedCertList?.length,
+      });
+      // const result = {
+      //   data: {
+      //     detail: '06eeef6b-a1d3-445b-bf3b-7bfbbbdda78d'
+      //   }
+      // }
       setCurrentBatchId(result?.data?.detail);
+      await handleBatchUpload(selectedCertList, result?.data?.detail);
     } catch (e) {
       setUploadingState(UPLOAD_STATE.IDLE);
       notification.error({
@@ -241,29 +251,80 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
     setSelectedCertList([]);
     setSucceedFiles([]);
     setFailedFiles([]);
+    setUploadDuration(undefined);
     setUploadingState(UPLOAD_STATE.IDLE);
   };
 
-//   const initEventSource = (batchId: string) => {
-//     const url = BASE_URL + `/batches/${batchId}/created`;
-//     _eventSource = new EventSource(url);
-//     (_eventSource as EventSource).onmessage = () => {
-//       notification.success({
-//         message: `Đã tải lên thành công tất cả ${selectedCertList.length} chứng nhận`,
-//       });
-//       _eventSource.close();
-//       setUploadingState(UPLOAD_STATE.SUCCEED);
-//     };
-//   };
+  const initEventSource = (batchId: string, initTime: number) => {
+    const url = BASE_URL + `/batches/${batchId}/created`;
+    _eventSource = new EventSource(url);
+    (_eventSource as EventSource).onmessage = () => {
+      notification.success({
+        message: `Đã tải lên thành công tất cả ${selectedCertList.length} chứng nhận`,
+      });
+      setUploadDuration((Date.now() - initTime) / 1000);
+      _eventSource.close();
+      setUploadingState(UPLOAD_STATE.SUCCEED);
+    };
+  };
 
-//   useEffect(() => {
-//     if (currentBatchId && uploadingState === UPLOAD_STATE.UPLOADED) {
-//       initEventSource(currentBatchId);
-//     }
-//     return () => {
-//       _eventSource?.close();
-//     };
-//   }, [currentBatchId, uploadingState]);
+  const sweepData = async (batchId: string, totalCertNumber: number) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    const getBatchProgressResponse = await axiosInstance.get(
+      `/batches/get-progress/${batchId}`,
+      { signal: controller.signal }
+    );
+    controller.abort();
+    if (
+      getBatchProgressResponse?.data?.status === "CREATED" &&
+      getBatchProgressResponse?.data?.docCount === totalCertNumber
+    ) {
+      notification.success({
+        message: `Các chứng nhận đã đươc tải và xử lý thành công.`,
+      });
+      clearInterval(batchProgressIntervalRef.current);
+      setUploadingState(UPLOAD_STATE.SUCCEED);
+    }
+  };
+
+  const getMessageTitle = () => {
+    if(uploadingState === UPLOAD_STATE.PENDING || uploadingState === UPLOAD_STATE.RETRYING) return `Đang upload: ${succeedFiles?.length}/${selectedCertList?.length} chứng nhận`
+    if(uploadingState === UPLOAD_STATE.PROCESSING) return `Tất cả chứng nhận đã được tải lên. Đang xử lý`
+    if(uploadingState === UPLOAD_STATE.SUCCEED) return `Tất cả chứng nhận đã được tải lên và xử lý thành công`
+  }
+
+  // useEffect(() => {
+  //   return () => {
+  //     _eventSource?.close();
+  //   };
+  // }, [currentBatchId, uploadingState]);
+
+  useEffect(() => {
+    if (
+      selectedCertList?.length &&
+      selectedCertList?.length === failedFiles?.length + succeedFiles?.length
+    ) {
+      if (failedFiles?.length) {
+        setUploadingState(UPLOAD_STATE.FAILED);
+        notification.error({
+          message: `Đã có ${failedFiles?.length} chứng nhận đã tải lên thất bại`,
+        });
+      } else {
+        setUploadingState(UPLOAD_STATE.PROCESSING);
+        notification.warning({
+          message: 'Các chứng chỉ đã được tải lên thành công. Vui lòng chờ hệ thống xử lý trong ít phút'
+        })
+        batchProgressIntervalRef.current = setInterval(() => {
+          sweepData(currentBatchId, selectedCertList?.length);
+        }, 5000);
+      }
+    }
+  }, [failedFiles, succeedFiles, selectedCertList]);
 
   return (
     <div ref={uploadRef}>
@@ -311,24 +372,11 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
               </p>
             )}
           </div>
-          <div className="flex items-center justify-center">
-            <Button
-              onClick={handleUploadInit}
-              className="mt-10"
-              type="primary"
-              disabled={!selectedCertList?.length}
-            >
-              Upload
-            </Button>
-          </div>
         </>
-      ) : null}
-      {uploadingState === UPLOAD_STATE.PENDING ||
-      uploadingState === UPLOAD_STATE.SUCCEED ||
-      uploadingState === UPLOAD_STATE.UPLOADED ||
-      uploadingState === UPLOAD_STATE.FAILED ? (
+      ) : (
         <>
           <div className="flex justify-center	">
+            {/* <Button onClick={() => {dispatchEvent()}}>fasdfasdfasd</Button> */}
             <Progress
               size={200}
               type="circle"
@@ -340,20 +388,20 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
               )}
               status={
                 uploadingState === UPLOAD_STATE.PENDING ||
-                uploadingState === UPLOAD_STATE.UPLOADED
+                uploadingState === UPLOAD_STATE.PROCESSING
                   ? "normal"
                   : uploadingState === UPLOAD_STATE.SUCCEED
                   ? "success"
                   : "exception"
               }
-              success={{
-                percent: Number(
-                  (
-                    (succeedFiles?.length * 100) /
-                    selectedCertList?.length
-                  ).toFixed(0)
-                ),
-              }}
+              //   success={{
+              //     percent: Number(
+              //       (
+              //         (succeedFiles?.length * 100) /
+              //         selectedCertList?.length
+              //       ).toFixed(0)
+              //     ),
+              //   }}
               format={() => (
                 <div
                   style={{
@@ -363,43 +411,69 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
                     margin: "10%",
                   }}
                 >
-                  {succeedFiles?.length}/{selectedCertList?.length} chứng chỉ đã
-                  upload thành công`
+                  {getMessageTitle()}
                 </div>
               )}
             />
           </div>
-          <div className="flex gap-x-8 items-center justify-center mt-6">
-            {uploadingState === UPLOAD_STATE.FAILED ? (
-              <Button
-                className="w-20"
-                type="primary"
-                onClick={handleRetryAllFail}
-              >
-                Tải lại
-              </Button>
-            ) : (
-              <Button
-                className="w-20"
-                type="primary"
-                onClick={() => setStep(1)}
-                disabled={uploadingState !== UPLOAD_STATE.SUCCEED}
-              >
-                Tiếp theo
-              </Button>
-            )}
+        </>
+      )}
+      <div>
+        {uploadingState === UPLOAD_STATE.IDLE ||
+        uploadingState === UPLOAD_STATE.PENDING ||
+        uploadingState === UPLOAD_STATE.PROCESSING ? (
+          <div className="flex items-center justify-center">
             <Button
-              className="w-20"
-              ghost
-              danger
-              onClick={handleReset}
-              disabled={uploadingState !== UPLOAD_STATE.FAILED}
+              onClick={handleUploadInit}
+              className="mt-10"
+              type="primary"
+              disabled={!selectedCertList?.length}
+              loading={
+                uploadingState === UPLOAD_STATE.PENDING ||
+                uploadingState === UPLOAD_STATE.PROCESSING
+              }
             >
-              Huỷ
+
+              Upload
             </Button>
           </div>
-        </>
-      ) : null}
+        ) : (
+          <>
+            {/* <div className="flex gap-x-8 items-center justify-center">
+              Thời gian upload: {uploadDuration || ""}
+            </div> */}
+            <div className="flex gap-x-8 items-center justify-center mt-6">
+              {uploadingState === UPLOAD_STATE.FAILED || uploadingState === UPLOAD_STATE.RETRYING ? (
+                <Button
+                  className="w-20"
+                  type="primary"
+                  onClick={handleRetryAllFail}
+                  loading={uploadingState === UPLOAD_STATE.RETRYING}
+                >
+                  Tải lại
+                </Button>
+              ) : (
+                <Button
+                  className="w-20"
+                  type="primary"
+                  onClick={() => setStep(1)}
+                >
+                  Tiếp theo
+                </Button>
+              )}
+              <Button
+                className="w-20"
+                ghost
+                danger
+                onClick={handleReset}
+                loading={uploadingState === UPLOAD_STATE.RETRYING}
+              >
+                Huỷ
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 };

@@ -1,13 +1,13 @@
 // axiosInstance.ts
 import axios from "axios";
 
-export const BASE_URL = "http://192.168.1.25:8000"; // Replace with your base URL
+export const BASE_URL = import.meta.env.BASE_URL; // Replace with your base URL
 // const BASE_URL = 'http://localhost:5000'; // Replace with your base URL
 
 const axiosInstance = axios.create({
     baseURL: BASE_URL,
     headers: {
-        "Content-Type": "multipart/form-data",
+        "Content-Type": "application/json",
         // Add any other default headers here if needed
     },
 });
