@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "build:staging": "vite build --mode prod"
+    "build:prod": "vite build --mode prod"
   },
   "dependencies": {
     "@types/js-cookie": "^3.0.6",
