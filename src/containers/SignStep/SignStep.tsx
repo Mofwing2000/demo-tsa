@@ -9,6 +9,7 @@ import {
   Tooltip,
   Modal,
   Spin,
+  Progress,
 } from "antd";
 import useSign from "../../hooks/useSign";
 import axiosInstance from "../../api/request";
@@ -35,6 +36,7 @@ enum SIGN_STATUS {
   PENDING = "PENDING",
   PROCESSED = "PROCESSED",
   ERROR = "ERROR",
+  RETRYING = "RETRYING",
   SUCCEED = "SUCCEED",
 }
 
@@ -49,9 +51,13 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
   const [signDuration, setSignDuration] = useState<number | undefined>();
   const batchProgressIntervalRef = useRef<number>();
   const [loading, setLoading] = useState(false);
+  const [signedNumber, setSignedNumber] = useState(0);
 
   const { getUSBAliases, signMessage } = useSign();
   let _eventSource: any = null;
+
+  const MAX_RETRY = import.meta.env.VITE_MAX_RETRY;
+  const SWEEP_INTERVAL= import.meta.env.VITE_DATA_SWEEP_INTERVAL;
 
   const { confirm } = Modal;
 
@@ -79,10 +85,11 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
     cert: HashCert,
     offset: number,
     batchId: string,
-    retries: number = 3
+    retries: number = MAX_RETRY
   ) => {
     try {
       const signedHashCert = await signMessage(selectedAlias!, cert?.sh);
+      setSignedNumber((prev) => prev + 1);
       return signedHashCert;
     } catch {
       if (retries > 1) {
@@ -102,7 +109,7 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
   const signUsbSetCertWithRetry = async (
     offset: number,
     batchId: string,
-    retries: number = 3
+    retries: number = MAX_RETRY
   ) => {
     try {
       const signedHashCerts = [];
@@ -130,11 +137,12 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
     } catch {
       if (retries > 1)
         await signUsbSetCertWithRetry(offset, batchId, retries - 1);
-      else
+      else {
         setFailedSets((prev) => ({
           ...prev,
           [`set-${offset}`]: {},
         }));
+      }
     }
   };
 
@@ -179,7 +187,7 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
         }
         batchProgressIntervalRef.current = setInterval(() => {
           sweepData(currentBatchId, totalCertNumber);
-        }, 5000);
+        }, SWEEP_INTERVAL);
       }
       setSignStatus(SIGN_STATUS.PROCESSED);
     } catch {
@@ -257,6 +265,17 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
     }
   };
 
+  const getMessageTitle = () => {
+    if (signStatus === SIGN_STATUS.PENDING)
+      return `Đang ký: ${signedNumber}/${totalCertNumber} chứng nhận đã ký thành công`;
+    if (signStatus === SIGN_STATUS.PROCESSED)
+      return `Tất cả chứng nhận đã được ký. Đang xử lý...`;
+    if (signStatus === SIGN_STATUS.SUCCEED)
+      return `Tất cả chứng nhận đã được ký và xử lý thành công`;
+    if (signStatus === SIGN_STATUS.ERROR)
+      return `Đã xảy ra lỗi: ${signedNumber}/${totalCertNumber} chứng nhận đã ký`;
+  };
+
   useEffect(() => {
     getAliases();
   }, []);
@@ -279,42 +298,79 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
 
   return (
     <div className="flex items-center flex-col">
-      <div className="max-w-sm md:max-w-lg grow border border-solid rounded-lg border-slate-300 p-6 shrink-0 flex-1">
-        <div className="flex justify-between items-center mb-6">
-          <div className="text-xl font-bold">Danh sách USB ký số:</div>
-          <Tooltip title="Cập nhật danh sách usb">
-            <span className="cursor-pointer" onClick={getAliases}>
-              <IcRefresh />
-            </span>
-          </Tooltip>
-        </div>
+      {signStatus === SIGN_STATUS.INIT ? (
+        <div className="w-full max-w-sm md:max-w-md grow border border-solid rounded-lg border-slate-300 p-6 shrink-0 flex-1">
+          <div className="flex justify-between items-center mb-6">
+            <div className="text-xl font-bold">Danh sách USB ký số:</div>
+            <Tooltip title="Cập nhật danh sách usb">
+              <span className="cursor-pointer" onClick={getAliases}>
+                <IcRefresh />
+              </span>
+            </Tooltip>
+          </div>
 
-        <div className="min-h-64 ">
-          {aliases?.length > 0 ? (
-            <Radio.Group
-              className="w-full"
-              onChange={handleChooseAlias}
-              value={selectedAlias}
-            >
-              <Space
-                direction="vertical"
-                className="px-1 py-2 w-full hover:bg-slate-200 rounded-lg transition ease-in-out delay-150"
-                onClick={() => setSelectedAlias(selectedAlias)}
+          <div className="min-h-64 ">
+            {aliases?.length > 0 ? (
+              <Radio.Group
+                className="w-full"
+                onChange={handleChooseAlias}
+                value={selectedAlias}
               >
-                {aliases.map((alias) => (
-                  <Radio value={alias}>{alias}</Radio>
-                ))}
-              </Space>
-            </Radio.Group>
-          ) : (
-            "Không tìm thấy usb ký số"
-          )}
-          {loading ? <Spin className="w-full h-full" /> : null}
-        </div>
-        {/* <div className="flex gap-x-8 items-center justify-center">
+                <Space
+                  direction="vertical"
+                  className="px-1 py-2 w-full hover:bg-slate-200 rounded-lg transition ease-in-out delay-150"
+                  onClick={() => setSelectedAlias(selectedAlias)}
+                >
+                  {aliases.map((alias) => (
+                    <Radio value={alias}>{alias}</Radio>
+                  ))}
+                </Space>
+              </Radio.Group>
+            ) : (
+              "Không tìm thấy usb ký số"
+            )}
+            {loading ? <Spin className="w-full h-full" /> : null}
+          </div>
+          {/* <div className="flex gap-x-8 items-center justify-center">
           Thời gian ký: {signDuration || ""}
         </div> */}
-      </div>
+        </div>
+      ) : (
+        <Progress
+          size={200}
+          type="circle"
+          percent={Number(((signedNumber * 100) / totalCertNumber).toFixed(0))}
+          status={
+            signStatus === SIGN_STATUS.PENDING ||
+            signStatus === SIGN_STATUS.PROCESSED ||
+            signStatus === SIGN_STATUS.RETRYING
+              ? "normal"
+              : signStatus === SIGN_STATUS.SUCCEED
+              ? "success"
+              : "exception"
+          }
+          //   success={{
+          //     percent: Number(
+          //       (
+          //         (succeedFiles?.length * 100) /
+          //         selectedCertList?.length
+          //       ).toFixed(0)
+          //     ),
+          //   }}
+          format={() => (
+            <div
+              style={{
+                fontSize: "14px",
+                maxWidth: "80%",
+                textAlign: "center",
+                margin: "10%",
+              }}
+            >
+              {getMessageTitle()}
+            </div>
+          )}
+        />
+      )}
       <div className="max-w-sm md:max-w-lg grow flex justify-center mt-10">
         {signStatus === SIGN_STATUS.INIT ||
         signStatus === SIGN_STATUS.PROCESSED ||
@@ -331,12 +387,13 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
             Ký
           </Button>
         ) : null}
-        {signStatus === SIGN_STATUS.ERROR ? (
+        {signStatus === SIGN_STATUS.ERROR || signStatus === SIGN_STATUS.RETRYING ? (
           <Button
             className="w-24"
             type="primary"
             danger
             onClick={() => retryFailCertSign(currentBatchId)}
+            loading={signStatus === SIGN_STATUS.RETRYING}
           >
             Thử lại
           </Button>
