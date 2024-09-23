@@ -52,6 +52,7 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
   const batchProgressIntervalRef = useRef<number>();
   const [loading, setLoading] = useState(false);
   const [signedNumber, setSignedNumber] = useState(0);
+  const [processedNumber, setProcessedNumber] = useState(0);
 
   const { getUSBAliases, signMessage } = useSign();
   let _eventSource: any = null;
@@ -253,6 +254,9 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
     const getBatchProgressResponse = await axiosInstance.get(
       `/batches/get-progress/${batchId}`
     );
+    if(getBatchProgressResponse?.data?.status === "PENDING_SIGN" || getBatchProgressResponse?.data?.status === "SIGNED") {
+      setProcessedNumber(getBatchProgressResponse?.data?.docCount)
+    }
     if (
       getBatchProgressResponse?.data?.status === "SIGNED" &&
       getBatchProgressResponse?.data?.docCount === totalCertNumber
@@ -269,7 +273,7 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
     if (signStatus === SIGN_STATUS.PENDING)
       return `Đang ký: ${signedNumber}/${totalCertNumber} chứng nhận đã ký thành công`;
     if (signStatus === SIGN_STATUS.PROCESSED)
-      return `Tất cả chứng nhận đã được ký. Đang xử lý...`;
+      return `Đang ký: ${processedNumber}/${totalCertNumber} chứng nhận đã ký thành công`;
     if (signStatus === SIGN_STATUS.SUCCEED)
       return `Tất cả chứng nhận đã được ký và xử lý thành công`;
     if (signStatus === SIGN_STATUS.ERROR)
@@ -349,14 +353,14 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
               ? "success"
               : "exception"
           }
-          //   success={{
-          //     percent: Number(
-          //       (
-          //         (succeedFiles?.length * 100) /
-          //         selectedCertList?.length
-          //       ).toFixed(0)
-          //     ),
-          //   }}
+            success={{
+              percent: Number(
+                (
+                  (processedNumber * 100) /
+                  totalCertNumber
+                ).toFixed(0)
+              ),
+            }}
           format={() => (
             <div
               style={{

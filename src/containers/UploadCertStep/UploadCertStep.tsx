@@ -57,11 +57,12 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
   selectedCertList,
   setSelectedCertList,
 }) => {
-  const [succeedFiles, setSucceedFiles] = useState<File[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [failedFiles, setFailedFiles] = useState<File[]>([]);
   const [uploadingState, setUploadingState] = useState<
     keyof typeof UPLOAD_STATE
   >(UPLOAD_STATE.IDLE);
+  const [ processedCount, setProcessedCount] = useState(0)
 
   //timer
   const [uploadDuration, setUploadDuration] = useState<number | undefined>();
@@ -70,7 +71,6 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
   const uploadRef = useRef<HTMLDivElement>(null);
   const batchProgressIntervalRef = useRef<number>();
   const abortControllerRef = useRef<AbortController | null>(null);
-
   let _eventSource: any = null;
 
   const MAX_RETRY = Number(import.meta.env.VITE_MAX_RETRY);
@@ -111,17 +111,17 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
   ) => {
     try {
       await sendFiles(files, batchId);
-      setSucceedFiles((prev) => [...prev, ...files]);
+      setUploadedFiles((prev) => [...prev, ...files]);
     } catch (error: any) {
       if (retries > 1) {
         if ((error as FileUploadError)?.files) {
           const errorFiles = files.filter((file) =>
             error?.files.includes(file.name)
           );
-          const succeedFiles = files.filter(
+          const uploadedFiles = files.filter(
             (file) => !error?.files.includes(file.name)
           );
-          setSucceedFiles((prev) => [...prev, ...succeedFiles]);
+          setUploadedFiles((prev) => [...prev, ...uploadedFiles]);
           await sendFilesWithRetry(errorFiles, batchId, retries - 1);
         } else {
           await sendFilesWithRetry(files, batchId, retries - 1);
@@ -252,7 +252,7 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
   const handleReset = () => {
     setCurrentBatchId("");
     setSelectedCertList([]);
-    setSucceedFiles([]);
+    setUploadedFiles([]);
     setFailedFiles([]);
     setUploadDuration(undefined);
     setUploadingState(UPLOAD_STATE.IDLE);
@@ -283,6 +283,9 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
       { signal: controller.signal }
     );
     controller.abort();
+    if(getBatchProgressResponse?.data?.status === "CREATED" || getBatchProgressResponse?.data?.status === "PENDING_CREATE"){
+      setProcessedCount(getBatchProgressResponse?.data?.docCount)
+    }
     if (
       getBatchProgressResponse?.data?.status === "CREATED" &&
       getBatchProgressResponse?.data?.docCount === totalCertNumber
@@ -300,11 +303,11 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
       uploadingState === UPLOAD_STATE.PENDING ||
       uploadingState === UPLOAD_STATE.RETRYING
     )
-      return `Đang upload: ${succeedFiles?.length}/${selectedCertList?.length} chứng nhận đã tải lên`;
+      return `Đang upload: ${uploadedFiles?.length}/${selectedCertList?.length} chứng nhận đã tải lên`;
     if (uploadingState === UPLOAD_STATE.PROCESSING)
-      return `Tất cả chứng nhận đã được tải lên. Đang xử lý...`;
+      return `Đang upload: ${processedCount}/${selectedCertList?.length} chứng nhận đã xử lý`;
     if (uploadingState === UPLOAD_STATE.FAILED)
-      return `Đã xảy ra lỗi: ${succeedFiles?.length}/${selectedCertList?.length} chứng nhận đã tải lên`;
+      return `Đã xảy ra lỗi: ${uploadedFiles?.length}/${selectedCertList?.length} chứng nhận đã tải lên`;
     if (uploadingState === UPLOAD_STATE.SUCCEED)
       return `Tất cả chứng nhận đã được tải lên và xử lý thành công`;
   };
@@ -318,7 +321,7 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
   useEffect(() => {
     if (
       selectedCertList?.length &&
-      selectedCertList?.length === failedFiles?.length + succeedFiles?.length
+      selectedCertList?.length === failedFiles?.length + uploadedFiles?.length
     ) {
       if (failedFiles?.length) {
         setUploadingState(UPLOAD_STATE.FAILED);
@@ -336,7 +339,7 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
         }, SWEEP_INTERVAL);
       }
     }
-  }, [failedFiles, succeedFiles, selectedCertList]);
+  }, [failedFiles, uploadedFiles, selectedCertList]);
 
   return (
     <div ref={uploadRef}>
@@ -394,7 +397,7 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
               type="circle"
               percent={Number(
                 (
-                  (succeedFiles?.length * 100) /
+                  (uploadedFiles?.length * 100) /
                   selectedCertList?.length
                 ).toFixed(0)
               )}
@@ -406,14 +409,14 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
                   ? "success"
                   : "exception"
               }
-              //   success={{
-              //     percent: Number(
-              //       (
-              //         (succeedFiles?.length * 100) /
-              //         selectedCertList?.length
-              //       ).toFixed(0)
-              //     ),
-              //   }}
+                success={{
+                  percent: Number(
+                    (
+                      (processedCount * 100) /
+                      selectedCertList?.length
+                    ).toFixed(0)
+                  ),
+                }}
               format={() => (
                 <div
                   style={{
