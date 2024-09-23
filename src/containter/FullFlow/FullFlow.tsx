@@ -8,9 +8,6 @@ const FullFlow = () => {
     const [step, setStep] = useState(0);
     const [selectedCertList, setSelectedCertList] = useState<File[]>([]);
     const [currentBatchId, setCurrentBatchId] = useState<string>("");
-    const handleChangeStep = (newStep: number) => {
-        setStep(newStep);
-    };
 
     return (
         <div className="p-8">

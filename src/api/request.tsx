@@ -1,7 +1,7 @@
 // axiosInstance.ts
 import axios from "axios";
 
-export const BASE_URL = import.meta.env.BASE_URL; // Replace with your base URL
+export const BASE_URL = import.meta.env.VITE_BASE_URL; // Replace with your base URL
 // const BASE_URL = 'http://localhost:5000'; // Replace with your base URL
 
 const axiosInstance = axios.create({

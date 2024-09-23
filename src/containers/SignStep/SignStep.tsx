@@ -8,6 +8,8 @@ import {
   Space,
   Tooltip,
   Modal,
+  Spin,
+  Progress,
 } from "antd";
 import useSign from "../../hooks/useSign";
 import axiosInstance from "../../api/request";
@@ -15,7 +17,7 @@ import axiosInstance from "../../api/request";
 interface IProps {
   currentBatchId: string;
   setStep: React.Dispatch<React.SetStateAction<number>>;
-  totalCertNumber: number
+  totalCertNumber: number;
 }
 
 type SetNumberData = number;
@@ -34,6 +36,7 @@ enum SIGN_STATUS {
   PENDING = "PENDING",
   PROCESSED = "PROCESSED",
   ERROR = "ERROR",
+  RETRYING = "RETRYING",
   SUCCEED = "SUCCEED",
 }
 
@@ -47,9 +50,14 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
   //timer
   const [signDuration, setSignDuration] = useState<number | undefined>();
   const batchProgressIntervalRef = useRef<number>();
+  const [loading, setLoading] = useState(false);
+  const [signedNumber, setSignedNumber] = useState(0);
 
   const { getUSBAliases, signMessage } = useSign();
   let _eventSource: any = null;
+
+  const MAX_RETRY = Number(import.meta.env.VITE_MAX_RETRY);
+  const SWEEP_INTERVAL= Number(import.meta.env.VITE_DATA_SWEEP_INTERVAL);
 
   const { confirm } = Modal;
 
@@ -71,16 +79,17 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
         message: "Vui lòng chọn usb bạn muốn ký!",
       });
     showConfirm();
-  }
+  };
 
   const signCertWithRetry = async (
     cert: HashCert,
     offset: number,
     batchId: string,
-    retries: number = 3
+    retries: number = MAX_RETRY
   ) => {
     try {
       const signedHashCert = await signMessage(selectedAlias!, cert?.sh);
+      setSignedNumber((prev) => prev + 1);
       return signedHashCert;
     } catch {
       if (retries > 1) {
@@ -100,7 +109,7 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
   const signUsbSetCertWithRetry = async (
     offset: number,
     batchId: string,
-    retries: number = 3
+    retries: number = MAX_RETRY
   ) => {
     try {
       const signedHashCerts = [];
@@ -128,14 +137,14 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
     } catch {
       if (retries > 1)
         await signUsbSetCertWithRetry(offset, batchId, retries - 1);
-      else
+      else {
         setFailedSets((prev) => ({
           ...prev,
           [`set-${offset}`]: {},
         }));
+      }
     }
   };
-
 
   const signUSB = async () => {
     try {
@@ -177,8 +186,8 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
           await signUsbSetCertWithRetry(i, currentBatchId, 3);
         }
         batchProgressIntervalRef.current = setInterval(() => {
-          sweepData(currentBatchId, totalCertNumber)
-        }, 5000)
+          sweepData(currentBatchId, totalCertNumber);
+        }, SWEEP_INTERVAL);
       }
       setSignStatus(SIGN_STATUS.PROCESSED);
     } catch {
@@ -191,6 +200,7 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
 
   const getAliases = async () => {
     try {
+      setLoading(true);
       const listAliases = await getUSBAliases();
       setAliases(listAliases);
     } catch {
@@ -198,6 +208,8 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
         message:
           "Có lỗi trong quá trình lấy danh sách usb ký số. Vui lòng thử lại!",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -245,12 +257,23 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
       getBatchProgressResponse?.data?.status === "SIGNED" &&
       getBatchProgressResponse?.data?.docCount === totalCertNumber
     ) {
-      clearInterval(batchProgressIntervalRef.current)
+      clearInterval(batchProgressIntervalRef.current);
       setSignStatus(SIGN_STATUS.SUCCEED);
       notification.success({
         message: "Đã ký và xử lý thành công tất cả chứng nhận.",
       });
     }
+  };
+
+  const getMessageTitle = () => {
+    if (signStatus === SIGN_STATUS.PENDING)
+      return `Đang ký: ${signedNumber}/${totalCertNumber} chứng nhận đã ký thành công`;
+    if (signStatus === SIGN_STATUS.PROCESSED)
+      return `Tất cả chứng nhận đã được ký. Đang xử lý...`;
+    if (signStatus === SIGN_STATUS.SUCCEED)
+      return `Tất cả chứng nhận đã được ký và xử lý thành công`;
+    if (signStatus === SIGN_STATUS.ERROR)
+      return `Đã xảy ra lỗi: ${signedNumber}/${totalCertNumber} chứng nhận đã ký`;
   };
 
   useEffect(() => {
@@ -266,76 +289,124 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
         });
       } else {
         notification.warning({
-          message: "Đã ký thành công tất cả chứng nhận. Vui lòng chờ hệ thống xử lý trong ít phút",
+          message:
+            "Đã ký thành công tất cả chứng nhận. Vui lòng chờ hệ thống xử lý trong ít phút",
         });
       }
     }
   }, [signStatus, failedSets]);
 
   return (
-    <div className="flex justify-center">
-      <div className="max-w-sm md:max-w-lg grow">
-        <div className="flex justify-between items-center mb-3">
-          <div className="text-xl font-bold">Danh sách USB ký số:</div>
-          <Tooltip title="Cập nhật danh sách usb">
-            <Button className="cursor-pointer" onClick={getAliases}>
-              <IcRefresh />
-            </Button>
-          </Tooltip>
-        </div>
+    <div className="flex items-center flex-col">
+      {signStatus === SIGN_STATUS.INIT ? (
+        <div className="w-full max-w-sm md:max-w-md grow border border-solid rounded-lg border-slate-300 p-6 shrink-0 flex-1">
+          <div className="flex justify-between items-center mb-6">
+            <div className="text-xl font-bold">Danh sách USB ký số:</div>
+            <Tooltip title="Cập nhật danh sách usb">
+              <span className="cursor-pointer" onClick={getAliases}>
+                <IcRefresh />
+              </span>
+            </Tooltip>
+          </div>
 
-        <div>
-          {aliases?.length > 0 ? (
-            <Radio.Group onChange={handleChooseAlias} value={selectedAlias}>
-              <Space direction="vertical" className="py-2">
-                {aliases.map((alias) => (
-                  <Radio value={alias}>{alias}</Radio>
-                ))}
-              </Space>
-            </Radio.Group>
-          ) : (
-            "Không tìm thấy usb ký số"
-          )}
-        </div>
-        {/* <div className="flex gap-x-8 items-center justify-center">
+          <div className="min-h-64 ">
+            {aliases?.length > 0 ? (
+              <Radio.Group
+                className="w-full"
+                onChange={handleChooseAlias}
+                value={selectedAlias}
+              >
+                <Space
+                  direction="vertical"
+                  className="px-1 py-2 w-full hover:bg-slate-200 rounded-lg transition ease-in-out delay-150"
+                  onClick={() => setSelectedAlias(selectedAlias)}
+                >
+                  {aliases.map((alias) => (
+                    <Radio value={alias}>{alias}</Radio>
+                  ))}
+                </Space>
+              </Radio.Group>
+            ) : (
+              "Không tìm thấy usb ký số"
+            )}
+            {loading ? <Spin className="w-full h-full" /> : null}
+          </div>
+          {/* <div className="flex gap-x-8 items-center justify-center">
           Thời gian ký: {signDuration || ""}
         </div> */}
-        <div className="max-w-sm md:max-w-lg grow flex justify-center mt-10">
-          {signStatus === SIGN_STATUS.INIT ||
-          signStatus === SIGN_STATUS.PROCESSED ||
-          signStatus === SIGN_STATUS.PENDING ? (
-            <Button
-              className="w-24"
-              type="primary"
-              onClick={handleClickSign}
-              loading={
-                signStatus === SIGN_STATUS.PENDING ||
-                signStatus === SIGN_STATUS.PROCESSED
-              }
-            >
-              Ký
-            </Button>
-          ) : null}
-          {signStatus === SIGN_STATUS.ERROR ? (
-            <Button
-              className="w-24"
-              type="primary"
-              danger
-              onClick={() => retryFailCertSign(currentBatchId)}
-            >
-              Thử lại
-            </Button>
-          ) : null}
-          {signStatus === SIGN_STATUS.SUCCEED ? (
-            <Button
-              className="w-24"
-              type="primary"
-              onClick={() => setStep((step) => step + 1)}
-            >
-              Tiếp theo
-            </Button>
-          ) : null}
         </div>
+      ) : (
+        <Progress
+          size={200}
+          type="circle"
+          percent={Number(((signedNumber * 100) / totalCertNumber).toFixed(0))}
+          status={
+            signStatus === SIGN_STATUS.PENDING ||
+            signStatus === SIGN_STATUS.PROCESSED ||
+            signStatus === SIGN_STATUS.RETRYING
+              ? "normal"
+              : signStatus === SIGN_STATUS.SUCCEED
+              ? "success"
+              : "exception"
+          }
+          //   success={{
+          //     percent: Number(
+          //       (
+          //         (succeedFiles?.length * 100) /
+          //         selectedCertList?.length
+          //       ).toFixed(0)
+          //     ),
+          //   }}
+          format={() => (
+            <div
+              style={{
+                fontSize: "14px",
+                maxWidth: "80%",
+                textAlign: "center",
+                margin: "10%",
+              }}
+            >
+              {getMessageTitle()}
+            </div>
+          )}
+        />
+      )}
+      <div className="max-w-sm md:max-w-lg grow flex justify-center mt-10">
+        {signStatus === SIGN_STATUS.INIT ||
+        signStatus === SIGN_STATUS.PROCESSED ||
+        signStatus === SIGN_STATUS.PENDING ? (
+          <Button
+            className="w-24"
+            type="primary"
+            onClick={handleClickSign}
+            loading={
+              signStatus === SIGN_STATUS.PENDING ||
+              signStatus === SIGN_STATUS.PROCESSED
+            }
+          >
+            Ký
+          </Button>
+        ) : null}
+        {signStatus === SIGN_STATUS.ERROR || signStatus === SIGN_STATUS.RETRYING ? (
+          <Button
+            className="w-24"
+            type="primary"
+            danger
+            onClick={() => retryFailCertSign(currentBatchId)}
+            loading={signStatus === SIGN_STATUS.RETRYING}
+          >
+            Thử lại
+          </Button>
+        ) : null}
+        {signStatus === SIGN_STATUS.SUCCEED ? (
+          <Button
+            className="w-24"
+            type="primary"
+            onClick={() => setStep((step) => step + 1)}
+          >
+            Tiếp theo
+          </Button>
+        ) : null}
       </div>
     </div>
   );
