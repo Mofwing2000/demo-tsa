@@ -77,7 +77,7 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
   const SET_SIZE = Number(import.meta.env.VITE_SET_SIZE);
   const SWEEP_INTERVAL= Number(import.meta.env.VITE_DATA_SWEEP_INTERVAL);
   const CONCURRENT_LIMIT= Number(import.meta.env.VITE_UPLOAD_CONCURRENT_LIMIT);
-  const TEMPLATE_ID= Number(import.meta.env.VITE_TEMPLATE_ID);
+  const TEMPLATE_ID= import.meta.env.VITE_TEMPLATE_ID;
 
   const onDrop = async (acceptedFiles: File[]) => {
     const pdfFileList = acceptedFiles?.filter(
