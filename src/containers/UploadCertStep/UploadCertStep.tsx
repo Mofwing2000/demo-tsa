@@ -73,10 +73,11 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
 
   let _eventSource: any = null;
 
-  const MAX_RETRY = import.meta.env.VITE_MAX_RETRY;
-  const SET_SIZE = import.meta.env.VITE_SET_SIZE;
-  const SWEEP_INTERVAL= import.meta.env.VITE_DATA_SWEEP_INTERVAL;
-  const CONCURRENT_LIMIT= import.meta.env.VITE_UPLOAD_CONCURRENT_LIMIT;
+  const MAX_RETRY = Number(import.meta.env.VITE_MAX_RETRY);
+  const SET_SIZE = Number(import.meta.env.VITE_SET_SIZE);
+  const SWEEP_INTERVAL= Number(import.meta.env.VITE_DATA_SWEEP_INTERVAL);
+  const CONCURRENT_LIMIT= Number(import.meta.env.VITE_UPLOAD_CONCURRENT_LIMIT);
+  const TEMPLATE_ID= Number(import.meta.env.VITE_TEMPLATE_ID);
 
   const onDrop = async (acceptedFiles: File[]) => {
     const pdfFileList = acceptedFiles?.filter(
@@ -175,7 +176,7 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
 
       const fileBatch = files.slice(currentIndex, currentIndex + SET_SIZE);
       currentIndex += SET_SIZE; // Move to the next batch
-
+      console.log(SET_SIZE, currentIndex, 'ádfasdfds')
       try {
         await sendFilesWithRetry(fileBatch, batchId, maxRetries);
       } catch (error) {
@@ -229,7 +230,7 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
     try {
       const result = await axiosInstance.post("/batches/create", {
         title: "Title",
-        templateId: "285cf599-e303-481c-809b-db14548ef521",
+        templateId: TEMPLATE_ID,
         institutionName: "HUST",
         size: selectedCertList?.length,
       });

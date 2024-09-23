@@ -56,8 +56,8 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
   const { getUSBAliases, signMessage } = useSign();
   let _eventSource: any = null;
 
-  const MAX_RETRY = import.meta.env.VITE_MAX_RETRY;
-  const SWEEP_INTERVAL= import.meta.env.VITE_DATA_SWEEP_INTERVAL;
+  const MAX_RETRY = Number(import.meta.env.VITE_MAX_RETRY);
+  const SWEEP_INTERVAL= Number(import.meta.env.VITE_DATA_SWEEP_INTERVAL);
 
   const { confirm } = Modal;
 

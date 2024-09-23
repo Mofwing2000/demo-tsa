@@ -28,8 +28,8 @@ const Download = ({
     keyof typeof DOWNLOAD_STATE
   >(DOWNLOAD_STATE.IDLE);
 
-  const MAX_RETRY = import.meta.env.VITE_MAX_RETRY;
-  const CONCURRENT_LIMIT= import.meta.env.VITE_DOWNLOAD_CONCURRENT_LIMIT;
+  const MAX_RETRY = Number(import.meta.env.VITE_MAX_RETRY);
+  const CONCURRENT_LIMIT= Number(import.meta.env.VITE_DOWNLOAD_CONCURRENT_LIMIT);
 
   const downloadAndZipFiles = async (retryLeft: number = MAX_RETRY) => {
     try {
