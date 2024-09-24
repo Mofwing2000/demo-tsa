@@ -1,6 +1,6 @@
 services: 
   b4e-demo-fe:
-    container_name: b4e-demo-fe-
+    container_name: b4e-demo-fe
     image: nhimcoii/b4e-fe
     ports:
       - 3000:80
