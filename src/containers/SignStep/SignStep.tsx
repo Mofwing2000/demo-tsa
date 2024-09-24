@@ -351,6 +351,7 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
         <Progress
           size={200}
           type="circle"
+          strokeLinecap="butt"
           percent={Number(((signedNumber * 100) / totalCertNumber).toFixed(0))}
           status={
             signStatus === SIGN_STATUS.PENDING ||

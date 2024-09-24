@@ -395,6 +395,7 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
             <Progress
               size={200}
               type="circle"
+              strokeLinecap="butt"
               percent={Number(
                 (
                   (uploadedFiles?.length * 100) /
