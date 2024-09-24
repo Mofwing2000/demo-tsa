@@ -115,7 +115,6 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
     retries: number = MAX_RETRY
   ) => {
     try {
-      alert(offset)
       const signedHashCerts:any = [];
       const hashCertSetResponse = await axiosInstance.get<HashCert[]>(
         `/sign/hashes/${batchId}?offset=${offset}&sigIdx=0`
