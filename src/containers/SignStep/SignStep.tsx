@@ -60,7 +60,8 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
 
   const MAX_RETRY = Number(import.meta.env.VITE_MAX_RETRY);
   const SWEEP_INTERVAL= Number(import.meta.env.VITE_DATA_SWEEP_INTERVAL);
-  const MAX_SIGN_CONCURRENT= Number(import.meta.env.VITE_SIGN_CONCURRENT_LIMIT);
+  const MAX_CERT_SIGN_CONCURRENT= Number(import.meta.env.VITE_CERT_SIGN_CONCURRENT_LIMIT);
+  const MAX_SET_SIGN_CONCURRENT= Number(import.meta.env.VITE_SET_SIGN_CONCURRENT_LIMIT);
 
   const { confirm } = Modal;
 
@@ -124,7 +125,7 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
         `/sign/hashes/${batchId}?offset=${offset}&sigIdx=0`
       );
       if(!hashCertSetResponse?.data?.length) return
-      const concurrencyLimit = MAX_SIGN_CONCURRENT;
+      const concurrencyLimit = MAX_CERT_SIGN_CONCURRENT;
       const queue: Promise<void>[] = [];
       let currentIndex = -1;
 
@@ -194,7 +195,7 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
       );
       let currentIndex = -1;
       if (responseGetSetNumber?.data) {
-        const concurrencyLimit = MAX_SIGN_CONCURRENT;
+        const concurrencyLimit = MAX_SET_SIGN_CONCURRENT;
         const queue: Promise<void>[] = [];
         while (currentIndex < responseGetSetNumber?.data - 1|| queue.length > 0) {
           // While we're below the concurrency limit, start new uploads
