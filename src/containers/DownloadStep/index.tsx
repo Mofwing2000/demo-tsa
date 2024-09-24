@@ -48,7 +48,7 @@ const Download = ({
       let currentIndex = 0;
       const queue: Promise<void>[] = [];
 
-      const downloadNextFile = async() => {
+      const downloadNextFile = async(retryLeft = MAX_RETRY) => {
         const url = fileLinks[currentIndex];
         try {
           const response = await axiosInstance(url, {
@@ -63,6 +63,11 @@ const Download = ({
           zip.file(fileName, new Blob([pdfFileBuffer]));
           currentIndex += 1;
         } catch (error) {
+          if(retryLeft > 0) {
+            await downloadNextFile(retryLeft - 1);
+          } else {            
+            throw new Error("Lỗi khi tải file");
+          }
           console.error(`Error downloading file ${url}:`, error);
         }
       };
@@ -77,6 +82,14 @@ const Download = ({
             // currentIndex+=1;
             // Remove the completed promise from the queue
             queue.splice(queue.indexOf(uploadPromise), 1);
+          }).catch((error) => {
+            console.error("Failed to download a file:", error);
+            // Stop the overall process if retries are exhausted
+            setDownloadState(DOWNLOAD_STATE.IDLE);
+            notification.error({
+              message: 'Lỗi khi tải file, vui lòng tải lại'
+            })
+            return; // Exit the while loop
           });
           queue.push(uploadPromise); // Add the promise to the queue
         }

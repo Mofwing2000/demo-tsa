@@ -100,7 +100,7 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
       };
     } catch {
       if (retries > 0) {
-        await signCertWithRetry(cert, offset, batchId, retries - 1);
+        return await signCertWithRetry(cert, offset, batchId, retries - 1);
       } else {
         setFailedSets((prev) => ({
           ...prev,
