@@ -141,7 +141,7 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
             batchId,
             MAX_RETRY
           ).then((signedHashCert) => {
-            console.log(hashCertSetResponse?.data?.[currentIndex], 'ádfads')
+            console.log(signedHashCert,offset, 'ádfads')
             signedHashCerts.push(signedHashCert);
             // Remove the completed promise from the queue
             queue.splice(queue.indexOf(uploadPromise), 1);
