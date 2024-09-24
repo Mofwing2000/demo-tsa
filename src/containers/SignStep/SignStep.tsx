@@ -53,6 +53,7 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
   const [loading, setLoading] = useState(false);
   const [signedNumber, setSignedNumber] = useState(0);
   const [processedNumber, setProcessedNumber] = useState(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const { getUSBAliases, signMessage } = useSign();
   let _eventSource: any = null;
@@ -93,7 +94,7 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
       setSignedNumber((prev) => prev + 1);
       return signedHashCert;
     } catch {
-      if (retries > 1) {
+      if (retries > 0) {
         await signCertWithRetry(cert, offset, batchId, retries - 1);
       } else {
         setFailedSets((prev) => ({
@@ -251,9 +252,16 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
   // }, []);
 
   const sweepData = async (batchId: string, totalCertNumber: number) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     const getBatchProgressResponse = await axiosInstance.get(
       `/batches/get-progress/${batchId}`
     );
+    controller.abort();
     if(getBatchProgressResponse?.data?.status === "PENDING_SIGN" || getBatchProgressResponse?.data?.status === "SIGNED") {
       setProcessedNumber(getBatchProgressResponse?.data?.docCount)
     }
