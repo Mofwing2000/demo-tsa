@@ -113,7 +113,7 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
       await sendFiles(files, batchId);
       setUploadedFiles((prev) => [...prev, ...files]);
     } catch (error: any) {
-      if (retries > 1) {
+      if (retries > 0) {
         if ((error as FileUploadError)?.files) {
           const errorFiles = files.filter((file) =>
             error?.files.includes(file.name)
@@ -395,6 +395,7 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
             <Progress
               size={200}
               type="circle"
+              strokeLinecap="butt"
               percent={Number(
                 (
                   (uploadedFiles?.length * 100) /
