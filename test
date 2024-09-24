@@ -1,0 +1,23 @@
+server {
+    server_name api.demo.b4e.vn;
+    location / {
+            proxy_pass  http://localhost:8000;
+    }
+    listen [::]:443 ssl;
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/api.demo.b4e.vn/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.demo.b4e.vn/privkey.pem;
+}
+server { listen 80; listen [::]:80; server_name api.demo.b4e.vn; if ($host = api.demo.b4e.vn) { return 301 https://$host$request_uri; } return 404; }
+
+server {
+    server_name demo.b4e.vn;
+    location / {
+            proxy_pass  http://localhost:3000;
+    }
+    listen [::]:443 ssl;
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/demo.b4e.vn/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/demo.b4e.vn/privkey.pem;
+}
+server { listen 80; listen [::]:80; server_name demo.b4e.vn; if ($host = demo.b4e.vn) { return 301 https://$host$request_uri; } return 404; }

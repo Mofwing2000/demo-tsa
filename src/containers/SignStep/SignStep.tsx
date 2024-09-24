@@ -60,6 +60,7 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
 
   const MAX_RETRY = Number(import.meta.env.VITE_MAX_RETRY);
   const SWEEP_INTERVAL= Number(import.meta.env.VITE_DATA_SWEEP_INTERVAL);
+  const MAX_SIGN_CONCURRENT= Number(import.meta.env.VITE_SIGN_CONCURRENT_LIMIT);
 
   const { confirm } = Modal;
 
@@ -114,22 +115,55 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
     retries: number = MAX_RETRY
   ) => {
     try {
-      const signedHashCerts = [];
+      alert(offset)
+      const signedHashCerts:any = [];
       const hashCertSetResponse = await axiosInstance.get<HashCert[]>(
         `/sign/hashes/${batchId}?offset=${offset}&sigIdx=0`
       );
-      for (let cert of hashCertSetResponse?.data) {
-        const signedHashCert = await signCertWithRetry(
-          cert,
-          offset,
-          batchId,
-          3
-        );
-        signedHashCerts.push({
-          ...cert,
-          signature: signedHashCert,
-        });
+      if(!hashCertSetResponse?.data?.length) return
+      const concurrencyLimit = MAX_SIGN_CONCURRENT;
+      const queue: Promise<void>[] = [];
+      let currentIndex = -1;
+
+      while (currentIndex < hashCertSetResponse?.data?.length - 1 || queue.length > 0) {
+        // While we're below the concurrency limit, start new uploads
+        while (
+          queue.length < concurrencyLimit &&
+          currentIndex < hashCertSetResponse?.data?.length - 1
+        ) {
+          currentIndex+=1;
+          const uploadPromise = signCertWithRetry(
+            hashCertSetResponse?.data?.[currentIndex],
+            offset,
+            batchId,
+            MAX_RETRY
+          ).then((signedHashCert) => {
+            signedHashCerts.push({
+              ...hashCertSetResponse?.data?.[currentIndex],
+              signature: signedHashCert,
+            });
+            // Remove the completed promise from the queue
+            queue.splice(queue.indexOf(uploadPromise), 1);
+          });
+          queue.push(uploadPromise); // Add the promise to the queue
+        }
+
+        // Wait for one of the ongoing uploads to finish before starting a new one
+        await Promise.race(queue);
       }
+
+      // for (let cert of hashCertSetResponse?.data) {
+      //   const signedHashCert = await signCertWithRetry(
+      //     cert,
+      //     offset,
+      //     batchId,
+      //     MAX_RETRY
+      //   );
+      //   signedHashCerts.push({
+      //     ...cert,
+      //     signature: signedHashCert,
+      //   });
+      // }
       const signPayload = {
         sig: signedHashCerts,
         batchId,
@@ -157,36 +191,36 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
       const responseGetSetNumber = await axiosInstance.get<SetNumberData>(
         `/batches/set-quantity/${currentBatchId}`
       );
+      let currentIndex = -1;
       if (responseGetSetNumber?.data) {
-        // const concurrencyLimit = 5;
-        // let currentIndex = 0;
-        // const queue: Promise<void>[] = [];
+        const concurrencyLimit = MAX_SIGN_CONCURRENT;
+        const queue: Promise<void>[] = [];
+        while (currentIndex < responseGetSetNumber?.data - 1|| queue.length > 0) {
+          // While we're below the concurrency limit, start new uploads
+          while (
+            queue.length < concurrencyLimit &&
+            currentIndex < responseGetSetNumber?.data - 1
+          ) {
+            currentIndex+=1;
+            const uploadPromise = signUsbSetCertWithRetry(
+              currentIndex,
+              currentBatchId,
+              MAX_RETRY
+            ).then(() => {
+              // Remove the completed promise from the queue
+              queue.splice(queue.indexOf(uploadPromise), 1);
+            });
+            queue.push(uploadPromise); // Add the promise to the queue
+          }
 
-        // while (currentIndex < responseGetSetNumber?.data || queue.length > 0) {
-        //   // While we're below the concurrency limit, start new uploads
-        //   while (
-        //     queue.length < concurrencyLimit &&
-        //     currentIndex < responseGetSetNumber?.data
-        //   ) {
-        //     const uploadPromise = signUsbSetCertWithRetry(
-        //       currentIndex,
-        //       currentBatchId,
-        //       3
-        //     ).then(() => {
-        //       // Remove the completed promise from the queue
-        //       queue.splice(queue.indexOf(uploadPromise), 1);
-        //     });
-        //     queue.push(uploadPromise); // Add the promise to the queue
-        //   }
-
-        //   // Wait for one of the ongoing uploads to finish before starting a new one
-        //   await Promise.race(queue);
-        // }
+          // Wait for one of the ongoing uploads to finish before starting a new one
+          await Promise.race(queue);
+        }
 
         // sign one by one
-        for (let i = 0; i < responseGetSetNumber?.data; i++) {
-          await signUsbSetCertWithRetry(i, currentBatchId, 3);
-        }
+        // for (let i = 0; i < responseGetSetNumber?.data; i++) {
+        //   await signUsbSetCertWithRetry(i, currentBatchId, 3);
+        // }
         batchProgressIntervalRef.current = setInterval(() => {
           sweepData(currentBatchId, totalCertNumber);
         }, SWEEP_INTERVAL);
@@ -281,7 +315,7 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
     if (signStatus === SIGN_STATUS.PENDING)
       return `Đang ký: ${signedNumber}/${totalCertNumber} chứng nhận đã ký thành công`;
     if (signStatus === SIGN_STATUS.PROCESSED)
-      return `Đang ký: ${processedNumber}/${totalCertNumber} chứng nhận đã ký thành công`;
+      return `Đang xử lý: ${processedNumber}/${totalCertNumber} chứng nhận đã xử lý thành công`;
     if (signStatus === SIGN_STATUS.SUCCEED)
       return `Tất cả chứng nhận đã được ký và xử lý thành công`;
     if (signStatus === SIGN_STATUS.ERROR)
@@ -333,8 +367,8 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
                   className="px-1 py-2 w-full hover:bg-slate-200 rounded-lg transition ease-in-out delay-150"
                   onClick={() => setSelectedAlias(selectedAlias)}
                 >
-                  {aliases.map((alias) => (
-                    <Radio value={alias}>{alias}</Radio>
+                  {aliases.map((alias, idx) => (
+                    <Radio key={idx} value={alias}>{alias === "Ð? BÁ LÂM" ? 'ĐỖ BÁ LÂM' : alias}</Radio>
                   ))}
                 </Space>
               </Radio.Group>

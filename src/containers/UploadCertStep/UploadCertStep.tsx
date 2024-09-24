@@ -176,7 +176,6 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
 
       const fileBatch = files.slice(currentIndex, currentIndex + SET_SIZE);
       currentIndex += SET_SIZE; // Move to the next batch
-      console.log(SET_SIZE, currentIndex, 'ádfasdfds')
       try {
         await sendFilesWithRetry(fileBatch, batchId, maxRetries);
       } catch (error) {
@@ -305,7 +304,7 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
     )
       return `Đang upload: ${uploadedFiles?.length}/${selectedCertList?.length} chứng nhận đã tải lên`;
     if (uploadingState === UPLOAD_STATE.PROCESSING)
-      return `Đang upload: ${processedCount}/${selectedCertList?.length} chứng nhận đã xử lý`;
+      return `Đang xử lý: ${processedCount}/${selectedCertList?.length} chứng nhận đã xử lý`;
     if (uploadingState === UPLOAD_STATE.FAILED)
       return `Đã xảy ra lỗi: ${uploadedFiles?.length}/${selectedCertList?.length} chứng nhận đã tải lên`;
     if (uploadingState === UPLOAD_STATE.SUCCEED)
@@ -404,7 +403,8 @@ const UploadCertStep: React.FC<UploadCertStepProps> = ({
               )}
               status={
                 uploadingState === UPLOAD_STATE.PENDING ||
-                uploadingState === UPLOAD_STATE.PROCESSING
+                uploadingState === UPLOAD_STATE.PROCESSING || 
+                uploadingState === UPLOAD_STATE.RETRYING
                   ? "normal"
                   : uploadingState === UPLOAD_STATE.SUCCEED
                   ? "success"
