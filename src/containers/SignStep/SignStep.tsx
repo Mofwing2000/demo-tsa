@@ -91,9 +91,13 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
     retries: number = MAX_RETRY
   ) => {
     try {
+      console.log(cert, 'ádfadsfadsasdfads')
       const signedHashCert = await signMessage(selectedAlias!, cert?.sh);
       setSignedNumber((prev) => prev + 1);
-      return signedHashCert;
+      return {
+        ...cert,
+        signature: signedHashCert
+      };
     } catch {
       if (retries > 0) {
         await signCertWithRetry(cert, offset, batchId, retries - 1);
@@ -137,10 +141,8 @@ const SignStep = ({ currentBatchId, setStep, totalCertNumber }: IProps) => {
             batchId,
             MAX_RETRY
           ).then((signedHashCert) => {
-            signedHashCerts.push({
-              ...hashCertSetResponse?.data?.[currentIndex],
-              signature: signedHashCert,
-            });
+            console.log(hashCertSetResponse?.data?.[currentIndex], 'ádfads')
+            signedHashCerts.push(signedHashCert);
             // Remove the completed promise from the queue
             queue.splice(queue.indexOf(uploadPromise), 1);
           });
