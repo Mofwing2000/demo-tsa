@@ -38,90 +38,80 @@ const Download = ({
       );
       const fileLinks = fileLinksResponse.data;
       setDownloadState(DOWNLOAD_STATE.PENDING);
-      const zip = new JSZip();
-      let filesDownloaded = 0;
-      if (!fileLinks?.length)
+  
+      if (!fileLinks?.length) {
         return notification.warning({
           message: "Lô chứng nhận chưa có chứng nhận nào được tải lên",
         });
+      }
+  
+      const zip = new JSZip();
+      let filesDownloaded = 0;
       const concurrencyLimit = CONCURRENT_LIMIT;
       let currentIndex = 0;
-      const queue: Promise<void>[] = [];
-
-      const downloadNextFile = async(retryLeft = MAX_RETRY) => {
-        const url = fileLinks[currentIndex];
+  
+      const downloadFile = async (url: string, index: number, retryLeft: number): Promise<void> => {
         try {
-          const response = await axiosInstance(url, {
-            responseType: "arraybuffer",
-          });
+          const response = await axiosInstance(url, { responseType: "arraybuffer" });
           filesDownloaded += 1;
-          // setProgress(Math.floor((filesDownloaded / fileLinks.length) * 100));
           const pdfFileBuffer = response.data;
-          const fileName = decodeURIComponent(
-            decodeURIComponent(url.split("/").pop() || `file-${currentIndex}.txt`)
-          );
+  
+          const fileName = decodeURIComponent(decodeURIComponent(url.split("/").pop() || `file-${index}.txt`));
           zip.file(fileName, new Blob([pdfFileBuffer]));
-          currentIndex += 1;
+  
+          // Optional: Progress update here
+          // setProgress(Math.floor((filesDownloaded / fileLinks.length) * 100));
         } catch (error) {
-          console.log(error, 'Loi khi tai file')
-          if(retryLeft > 0) {
-            await downloadNextFile(retryLeft - 1);
-          } else {            
-            throw new Error("Lỗi khi tải file");
+          if (retryLeft > 0) {
+            console.warn(`Retrying download for ${url}, retries left: ${retryLeft}`);
+            await downloadFile(url, index, retryLeft - 1); // Retry logic
+          } else {
+            throw new Error(`Failed to download file after retries: ${url}`);
           }
-          console.error(`Error downloading file ${url}:`, error);
         }
       };
-
+  
+      const downloadNextFile = async (): Promise<void> => {
+        if (currentIndex >= fileLinks.length) return; // No more files to download
+        const index = currentIndex; // Capture the current index
+        currentIndex += 1; // Increment before starting the next download to avoid overlap
+  
+        const url = fileLinks[index];
+        await downloadFile(url, index, retryLeft);
+      };
+  
+      const queue: Promise<void>[] = [];
+  
+      // Loop until all files are processed
       while (currentIndex < fileLinks.length || queue.length > 0) {
-        // While we're below the concurrency limit, start new uploads
-        while (
-          queue.length < concurrencyLimit &&
-          currentIndex < fileLinks.length
-        ) {
-          const uploadPromise = downloadNextFile().then(() => {
-            // currentIndex+=1;
-            // Remove the completed promise from the queue
-            queue.splice(queue.indexOf(uploadPromise), 1);
+        // Add new downloads to the queue until concurrency limit is reached
+        while (queue.length < concurrencyLimit && currentIndex < fileLinks.length) {
+          const promise = downloadNextFile().then(() => {
+            // Remove completed promise from queue
+            queue.splice(queue.indexOf(promise), 1);
           }).catch((error) => {
             console.error("Failed to download a file:", error);
-            // Stop the overall process if retries are exhausted
+            // Handle overall failure scenario if needed
             setDownloadState(DOWNLOAD_STATE.IDLE);
             notification.error({
               message: 'Lỗi khi tải file, vui lòng tải lại'
-            })
-            return; // Exit the while loop
+            });
+            return; // Exit the loop
           });
-          queue.push(uploadPromise); // Add the promise to the queue
+          queue.push(promise); // Add to the queue
         }
-
-        // Wait for one of the ongoing uploads to finish before starting a new one
+  
+        // Wait for one of the downloads to complete
         await Promise.race(queue);
       }
-
-      // for (let i = 0; i < fileLinks.length; i++) {
-      //   const url = fileLinks[i];
-      //   try {
-      //     const response = await axiosInstance(url, {
-      //       responseType: "arraybuffer",
-      //     });
-      //     filesDownloaded += 1;
-      //     // setProgress(Math.floor((filesDownloaded / fileLinks.length) * 100));
-      //     const pdfFileBuffer = response.data;
-      //     const fileName = decodeURIComponent(
-      //       decodeURIComponent(url.split("/").pop() || `file-${i}.txt`)
-      //     );
-      //     zip.file(fileName, new Blob([pdfFileBuffer]));
-      //   } catch (error) {
-      //     console.error(`Error downloading file ${url}:`, error);
-      //   }
-      // }
+  
+      // Generate ZIP after all downloads are complete
       const zipBlob = await zip.generateAsync({ type: "blob" });
       saveAs(zipBlob, "Danh sách chứng nhận.zip");
       setDownloadState(DOWNLOAD_STATE.FINISHED);
-    } catch(e) {
-      console.log('Loi khi tai file duoi:', e)
-      if(retryLeft > 0) {
+    } catch (e) {
+      console.log('Error during download process:', e);
+      if (retryLeft > 0) {
         downloadAndZipFiles(retryLeft - 1);
       } else {
         notification.error({
