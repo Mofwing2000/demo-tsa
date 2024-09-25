@@ -34,7 +34,7 @@ const Download = ({
   const downloadAndZipFiles = async (retryLeft: number = MAX_RETRY) => {
     try {
       const fileLinksResponse = await axiosInstance.get<string[]>(
-        `/storage/batch-download?batchId=${currentBatchId}`
+        `/storage/batch-download?batchId=e379ff56-3b19-4f8c-8467-13e7e829ec6c`
       );
       const fileLinks = fileLinksResponse.data;
       setDownloadState(DOWNLOAD_STATE.PENDING);
