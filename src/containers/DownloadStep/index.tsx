@@ -45,70 +45,77 @@ const Download = ({
         });
       }
   
-      const zip = new JSZip();
-      let filesDownloaded = 0;
-      const concurrencyLimit = CONCURRENT_LIMIT;
-      let currentIndex = 0;
+      const totalFiles = fileLinks.length;
+      const batchSize = 500; // Process in chunks of 500 files
+      let batchIndex = 0;
   
-      const downloadFile = async (url: string, index: number, retryLeft: number): Promise<void> => {
+      const downloadFile = async (url: string, index: number, retryLeft: number, zip: JSZip): Promise<void> => {
         try {
           const response = await axiosInstance(url, { responseType: "arraybuffer" });
-          filesDownloaded += 1;
           const pdfFileBuffer = response.data;
   
           const fileName = decodeURIComponent(decodeURIComponent(url.split("/").pop() || `file-${index}.txt`));
           zip.file(fileName, new Blob([pdfFileBuffer]));
   
-          // Optional: Progress update here
-          // setProgress(Math.floor((filesDownloaded / fileLinks.length) * 100));
         } catch (error) {
           if (retryLeft > 0) {
             console.warn(`Retrying download for ${url}, retries left: ${retryLeft}`);
-            await downloadFile(url, index, retryLeft - 1); // Retry logic
+            await downloadFile(url, index, retryLeft - 1, zip); // Retry logic
           } else {
             throw new Error(`Failed to download file after retries: ${url}`);
           }
         }
       };
   
-      const downloadNextFile = async (): Promise<void> => {
-        if (currentIndex >= fileLinks.length) return; // No more files to download
-        const index = currentIndex; // Capture the current index
-        currentIndex += 1; // Increment before starting the next download to avoid overlap
+      const downloadBatch = async (batchStartIndex: number, zip: JSZip): Promise<void> => {
+        const queue: Promise<void>[] = [];
+        let currentIndex = batchStartIndex;
   
-        const url = fileLinks[index];
-        await downloadFile(url, index, retryLeft);
+        const concurrencyLimit = CONCURRENT_LIMIT; // Use your existing concurrency limit
+        const batchEndIndex = Math.min(batchStartIndex + batchSize, totalFiles);
+  
+        const downloadNextFile = async (): Promise<void> => {
+          if (currentIndex >= batchEndIndex) return; // No more files in this batch
+          const index = currentIndex; 
+          currentIndex += 1; 
+  
+          const url = fileLinks[index];
+          await downloadFile(url, index, retryLeft, zip);
+        };
+  
+        while (currentIndex < batchEndIndex || queue.length > 0) {
+          while (queue.length < concurrencyLimit && currentIndex < batchEndIndex) {
+            const promise = downloadNextFile().then(() => {
+              queue.splice(queue.indexOf(promise), 1);
+            }).catch((error) => {
+              console.error("Failed to download a file:", error);
+              setDownloadState(DOWNLOAD_STATE.IDLE);
+              notification.error({
+                message: 'Lỗi khi tải file, vui lòng tải lại'
+              });
+              return;
+            });
+            queue.push(promise); // Add to the queue
+          }
+  
+          await Promise.race(queue);
+        }
       };
   
-      const queue: Promise<void>[] = [];
+      // Process files in batches
+      while (batchIndex * batchSize < totalFiles) {
+        const zip = new JSZip();
+        await downloadBatch(batchIndex * batchSize, zip);
   
-      // Loop until all files are processed
-      while (currentIndex < fileLinks.length || queue.length > 0) {
-        // Add new downloads to the queue until concurrency limit is reached
-        while (queue.length < concurrencyLimit && currentIndex < fileLinks.length) {
-          const promise = downloadNextFile().then(() => {
-            // Remove completed promise from queue
-            queue.splice(queue.indexOf(promise), 1);
-          }).catch((error) => {
-            console.error("Failed to download a file:", error);
-            // Handle overall failure scenario if needed
-            setDownloadState(DOWNLOAD_STATE.IDLE);
-            notification.error({
-              message: 'Lỗi khi tải file, vui lòng tải lại'
-            });
-            return; // Exit the loop
-          });
-          queue.push(promise); // Add to the queue
-        }
+        // Generate ZIP for the current batch
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        saveAs(zipBlob, `ChungNhan-Batch-${batchIndex + 1}.zip`);
   
-        // Wait for one of the downloads to complete
-        await Promise.race(queue);
+        batchIndex += 1;
       }
   
-      // Generate ZIP after all downloads are complete
-      const zipBlob = await zip.generateAsync({ type: "blob" });
-      saveAs(zipBlob, "Danh sách chứng nhận.zip");
       setDownloadState(DOWNLOAD_STATE.FINISHED);
+  
     } catch (e) {
       console.log('Error during download process:', e);
       if (retryLeft > 0) {
@@ -121,6 +128,7 @@ const Download = ({
       }
     }
   };
+  
 
   const handleUploadNewBatch = () => {
     setStep(0);
