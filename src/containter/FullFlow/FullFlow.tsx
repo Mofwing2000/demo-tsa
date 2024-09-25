@@ -5,7 +5,7 @@ import SignStep from "../../containers/SignStep";
 import Download from "../../containers/DownloadStep";
 
 const FullFlow = () => {
-    const [step, setStep] = useState(2);
+    const [step, setStep] = useState(0);
     const [selectedCertList, setSelectedCertList] = useState<File[]>([]);
     const [currentBatchId, setCurrentBatchId] = useState<string>("");
 
