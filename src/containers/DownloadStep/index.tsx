@@ -119,7 +119,8 @@ const Download = ({
       const zipBlob = await zip.generateAsync({ type: "blob" });
       saveAs(zipBlob, "Danh sách chứng nhận.zip");
       setDownloadState(DOWNLOAD_STATE.FINISHED);
-    } catch {
+    } catch(e) {
+      console.log('Loi khi tai file duoi:', e)
       if(retryLeft > 0) {
         downloadAndZipFiles(retryLeft - 1);
       } else {
