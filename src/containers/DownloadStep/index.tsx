@@ -30,11 +30,12 @@ const Download = ({
 
   const MAX_RETRY = Number(import.meta.env.VITE_MAX_RETRY);
   const CONCURRENT_LIMIT= Number(import.meta.env.VITE_DOWNLOAD_CONCURRENT_LIMIT);
+  const DOWNLOAD_FILE_LIMIT= Number(import.meta.env.VITE_DOWNLOAD_FILE_LIMIT);
 
   const downloadAndZipFiles = async (retryLeft: number = MAX_RETRY) => {
     try {
       const fileLinksResponse = await axiosInstance.get<string[]>(
-        `/storage/batch-download?batchId=e379ff56-3b19-4f8c-8467-13e7e829ec6c`
+        `/storage/batch-download?batchId=${currentBatchId}`
       );
       const fileLinks = fileLinksResponse.data;
       setDownloadState(DOWNLOAD_STATE.PENDING);
@@ -46,7 +47,7 @@ const Download = ({
       }
   
       const totalFiles = fileLinks.length;
-      const batchSize = 500; // Process in chunks of 500 files
+      const batchSize = DOWNLOAD_FILE_LIMIT; // Process in chunks of 500 files
       let batchIndex = 0;
   
       const downloadFile = async (url: string, index: number, retryLeft: number, zip: JSZip): Promise<void> => {
