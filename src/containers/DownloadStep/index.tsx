@@ -63,6 +63,7 @@ const Download = ({
           zip.file(fileName, new Blob([pdfFileBuffer]));
           currentIndex += 1;
         } catch (error) {
+          console.log(error, 'Loi khi tai file')
           if(retryLeft > 0) {
             await downloadNextFile(retryLeft - 1);
           } else {            
